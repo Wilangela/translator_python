@@ -1,0 +1,71 @@
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Dense
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import numpy as np
+
+#Dataset
+numbers = ["1", "2", "3", "4", "5"]
+words = ["one", "two", "three", "four", "five"]
+
+from tensorflow.keras.preprocessing.text import Tokenizer
+
+#Tokenize numbers and words
+num_tokenizer = Tokenizer(char_level=True) #Number characters
+word_tokenizer = Tokenizer()
+
+num_tokenizer.fit_on_texts(numbers)
+word_tokenizer.fit_on_texts(words)
+
+#convert to sequences
+num_sequences = num_tokenizer.texts_to_sequences(numbers)
+word_sequences = word_tokenizer.texts_to_sequences(words)
+
+#pad sequences
+max_len_num = max(len(seq) for seq in num_sequences)
+max_len_word = max(len(seq) for seq in word_sequences)
+
+num_padded = pad_sequences(num_sequences, maxlen=max_len_num, padding="post")
+word_padded = pad_sequences(word_sequences, maxlen=max_len_word, padding="post")
+
+
+latent_dim = 64
+
+#Encoder
+encoder_inputs = Input(shape=(max_len_num,))
+encoder_embedding = tf.keras.layers.Embedding(len(num_tokenizer.word_index) + 1, latent_dim) (encoder_inputs)
+_, state_h, state_c = LSTM(latent_dim, return_sequences=True) (encoder_embedding)
+encoder_states = [state_h, state_c]
+
+#Decoder
+decoder_inputs = Input(shape=(max_len_word,))
+decoder_embedding = tf.keras.layers.Embedding(len(word_tokenizer.word_index) + 1, latent_dim) (decoder_inputs)
+decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=False)
+decoder_outputs = decoder_lstm(decoder_embedding, initial_state=encoder_states)
+decoder_dense = Dense(len(word_tokenizer.word_index) + 1, activation="softmax")
+decoder_outputs = decoder_dense(decoder_outputs)
+
+#Define model
+model= Model([encoder_inputs, decoder_inputs], decoder_outputs)
+model.compile(optimizer="adam", loss="sparse_categorical_crossentropy")
+
+decoder_target_data = np.expand_dims(word_padded, -1)
+
+model.fit([num_padded, word_padded], decoder_target_data, batch_size=2, epochs=100)
+
+def translate_number(number):
+    #preprocess input number
+    input_seq = num_tokenizer.texts_to_sequences([number])
+    input_seq = pad_sequences(input_seq, maxlen=max_len_num, padding="post")
+
+    #Predict translation
+    prection = model.predict([input_seq, np.zeros((1, max_len_word))])
+    predicted_seq = np.argamax(prediction[0], axis=-1)
+
+    #Decode predicted sequence
+    translated_words = [word_tokenizer.index_word[idx] for idx in predicted_seq if idx > 0]
+    return " ".join(translated_words)
+
+#Example test 
+print(translate_number("3")) #Output: "three"
+
